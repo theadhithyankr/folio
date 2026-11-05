@@ -1,0 +1,1 @@
+{"appId":"com.folio.reader","appName":"Folio","webDir":"dist","android":{"backgroundColor":"#14131b"},"plugins":{"CapacitorHttp":{"enabled":true},"SplashScreen":{"launchShowDuration":0}}}

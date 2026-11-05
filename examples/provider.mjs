@@ -1,0 +1,3 @@
+﻿// Local protocol fixture. Run: node examples/provider.mjs
+import http from 'node:http';
+http.createServer((req,res)=>{const u=new URL(req.url,'http://localhost');res.setHeader('Content-Type','application/json');if(u.pathname==='/manifest.json')res.end(JSON.stringify({version:1,id:'fixture',name:'Protocol fixture',baseUrl:'http://localhost:4318'}));else if(u.pathname==='/search')res.end(JSON.stringify({books:[{id:'fixture-book',title:'A Fixture Book',author:'Folio',description:'Protocol test record; supply your own test source.'}]}));else if(u.pathname==='/sources')res.end(JSON.stringify({sources:[]}));else{res.statusCode=404;res.end('{}')}}).listen(4318,'127.0.0.1',()=>console.log('Fixture: http://127.0.0.1:4318/manifest.json'));

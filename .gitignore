@@ -1,0 +1,14 @@
+node_modules/
+dist/
+.npm-cache/
+*.log
+
+release/
+.smoke-data/
+.qa/
+
+.firecrawl/
+.research/
+android/.gradle/
+android/local.properties
+android/**/build/

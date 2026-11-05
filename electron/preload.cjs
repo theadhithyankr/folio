@@ -1,0 +1,1 @@
+const {contextBridge,ipcRenderer}=require('electron');contextBridge.exposeInMainWorld('folio',{call:(method,args)=>ipcRenderer.invoke('folio',method,args),onDownloads:cb=>{const fn=(_,d)=>cb(d);ipcRenderer.on('downloads',fn);return()=>ipcRenderer.removeListener('downloads',fn)}});

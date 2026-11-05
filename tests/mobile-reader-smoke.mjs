@@ -1,0 +1,21 @@
+// Run against the connected development device after installing the debug APK.
+import {execFileSync} from 'node:child_process';import fs from 'node:fs';import path from 'node:path';import os from 'node:os';
+const adb=process.env.ADB||path.join(process.env.ANDROID_HOME||path.join(os.homedir(),'AppData/Local/Android/Sdk'),'platform-tools/adb.exe');
+const serial=process.argv[2]||execFileSync(adb,['devices'],{encoding:'utf8'}).split('\n').find(s=>s.includes('\tdevice'))?.split('\t')[0];if(!serial)throw Error('Connect and authorize an Android device');
+const cmd=(...args)=>execFileSync(adb,['-s',serial,...args],{encoding:'utf8'}).trim();
+cmd('shell','am','start','-n','com.folio.reader/.MainActivity');const pid=cmd('shell','pidof','com.folio.reader').split(' ')[0];cmd('forward','tcp:9223','localabstract:webview_devtools_remote_'+pid);
+let pages;for(let i=0;i<30;i++){try{pages=await(await fetch('http://localhost:9223/json')).json();if(pages.length)break}catch{}await new Promise(r=>setTimeout(r,500))}if(!pages?.length)throw Error('No debug WebView found');
+const ws=new WebSocket(pages.find(p=>p.url.includes('localhost'))?.webSocketDebuggerUrl||pages[0].webSocketDebuggerUrl);await new Promise((r,j)=>{ws.onopen=r;ws.onerror=j});let id=0;const pending=new Map();ws.onmessage=e=>{const d=JSON.parse(e.data);if(d.id){const p=pending.get(d.id);pending.delete(d.id);if(d.error)p?.reject(Error(d.error.message));else p?.resolve(d.result)}};
+const evaluate=async expression=>{const request=++id;const p=new Promise((resolve,reject)=>{pending.set(request,{resolve,reject});setTimeout(()=>{if(pending.has(request)){pending.delete(request);reject(Error('Device evaluation timeout'))}},120000).unref()});ws.send(JSON.stringify({id:request,method:'Runtime.evaluate',params:{expression,awaitPromise:true,returnByValue:true}}));const r=await p;if(r.exceptionDetails)throw Error(r.exceptionDetails.exception?.description||r.exceptionDetails.text);return r.result.value};
+const capture=async()=>{const request=++id;const promise=new Promise((resolve,reject)=>pending.set(request,{resolve,reject}));ws.send(JSON.stringify({id:request,method:'Page.captureScreenshot',params:{format:'png'}}));const result=await promise;return Buffer.from(result.data,'base64')};
+try{
+const overview=await evaluate('({text:document.body.innerText.slice(-700),cards:document.querySelectorAll(".book").length})');console.log('Catalog UI:',overview);
+cmd('shell','pm','grant','com.folio.reader','android.permission.POST_NOTIFICATIONS');
+const b=await evaluate(`window.folio.call('download',{source:{url:'https://www.gutenberg.org/ebooks/11.epub.noimages',format:'EPUB'},book:{title:"Alice's Adventures in Wonderland",author:'Lewis Carroll',cover:'https://www.gutenberg.org/cache/epub/11/pg11.cover.medium.jpg'}})`);console.log('EPUB saved:',b.title);
+await evaluate('location.reload()');await new Promise(r=>setTimeout(r,2000));await evaluate(`Array.from(document.querySelectorAll('nav button')).find(b=>b.textContent==='Library').click()`);await new Promise(r=>setTimeout(r,300));await evaluate(`document.querySelector('.book').click()`);await new Promise(r=>setTimeout(r,300));await evaluate(`document.querySelector('.detail .primary').click()`);await new Promise(r=>setTimeout(r,4000));
+console.log('Reader UI:',await evaluate(`({title:document.querySelector('.reader-top strong')?.textContent,frames:document.querySelectorAll('.reading-host iframe').length,error:document.querySelector('.error')?.textContent})`));
+fs.writeFileSync('.qa/android-reader.png',await capture());
+await evaluate(`document.querySelector('.reader-bottom button:last-child').click()`);await new Promise(r=>setTimeout(r,500));await evaluate(`document.querySelector('[title="Bookmark position"]').click()`);console.log('Saved position:',await evaluate(`window.folio.call('state').then(s=>({location:!!s.books[0].location,bookmarks:s.books[0].bookmarks?.length}))`));
+await evaluate(`document.querySelector('.reader-top>button').click()`);
+const archive=await evaluate(`window.folio.call('addonSearch',{id:'internet-archive',query:'Alice in Wonderland'})`);console.log('Archive search:',archive.books.length,'results');
+}finally{ws.close();cmd('forward','--remove','tcp:9223')}
