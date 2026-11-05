@@ -6,8 +6,8 @@ Folio is a local-first ebook reader and library manager for Windows and Android.
 
 | Platform | Status | Install |
 | --- | --- | --- |
-| Windows (Electron) | ✅ Supported | Build from source (below) |
-| Android 9+ (API 28) | ✅ Supported | [Download APK](https://github.com/theadhithyankr/folio/releases) |
+| Windows 10/11 (x64) | ✅ Supported | [Portable zip](https://github.com/theadhithyankr/folio/releases) — extract and run `Folio.exe` |
+| Android 9+ (API 28) | ✅ Supported | [APK](https://github.com/theadhithyankr/folio/releases) |
 | Browser preview | ✅ Catalog browsing only | `npm run dev` |
 
 ## The problem Folio solves
