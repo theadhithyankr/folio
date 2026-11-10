@@ -1,4 +1,4 @@
-# Folio
+# Folio v2.0
 
 **A quiet home for every story.**
 
