@@ -1,0 +1,73 @@
+name: "AI Code Review"
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+  models: read
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch PR diff
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh pr diff "${{ github.event.pull_request.number }}" \
+            --repo "${{ github.repository }}" > pr.diff
+          head -c 60000 pr.diff > pr_trimmed.diff
+          if [ ! -s pr_trimmed.diff ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Generate AI review
+        if: steps.diff.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          jq -n --rawfile diff pr_trimmed.diff '{
+            model: "openai/gpt-4.1-mini",
+            messages: [
+              {
+                role: "system",
+                content: "You are a senior software engineer performing code review. Given a unified diff of a pull request: 1) List concrete issues only - bugs, security problems, performance concerns, breaking changes - each with the file name. 2) Mention anything done well in one short line. 3) End with a one-line verdict: APPROVE, COMMENT, or NEEDS CHANGES. Keep it under 300 words. Do not repeat the diff back. Use markdown."
+              },
+              { role: "user", content: $diff }
+            ]
+          }' > payload.json
+
+          HTTP_CODE=$(curl -sS -o response.json -w "%{http_code}" \
+            https://models.github.ai/inference \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d @payload.json) || true
+
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "Inference failed (HTTP $HTTP_CODE):"
+            cat response.json || true
+            exit 1
+          fi
+
+          jq -r '.choices[0].message.content' response.json > review.md
+
+      - name: Post review comment
+        if: steps.diff.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          {
+            echo "## 🤖 AI Code Review"
+            echo
+            cat review.md
+            echo
+            echo "<sub>Automated review via GitHub Models · openai/gpt-4.1-mini</sub>"
+          } > comment.md
+          gh pr comment "${{ github.event.pull_request.number }}" \
+            --repo "${{ github.repository }}" \
+            --body-file comment.md
